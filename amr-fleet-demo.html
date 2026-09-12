@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fleet Coordination Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0B0E11;
+    --panel:#12171C;
+    --panel-2:#171D23;
+    --line:#232B32;
+    --text:#D8DEE4;
+    --muted:#7C8A97;
+    --cyan:#00D4C8;
+    --amber:#FFB020;
+    --violet:#B18CFF;
+    --mint:#4ADE80;
+    --danger:#FF5C5C;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'IBM Plex Mono',monospace;}
+  h1,h2,.brand-text p{font-family:'Space Grotesk',sans-serif;}
+  .app{max-width:1180px;margin:0 auto;padding:20px 20px 40px;}
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:18px;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .brand-mark{font-size:26px;color:var(--cyan);}
+  .brand-text h1{margin:0;font-size:19px;font-weight:600;letter-spacing:.2px;}
+  .brand-text p{margin:2px 0 0;font-size:12.5px;color:var(--muted);font-family:'IBM Plex Mono',monospace;}
+  .mode-btn{
+    background:var(--panel-2);border:1px solid var(--line);color:var(--cyan);
+    padding:9px 14px;border-radius:3px;font-family:'IBM Plex Mono',monospace;
+    font-size:12px;letter-spacing:.4px;cursor:pointer;transition:border-color .15s;
+  }
+  .mode-btn:hover{border-color:var(--cyan);}
+  .mode-btn[data-mode="centralized"]{color:var(--amber);}
+  .layout{display:grid;grid-template-columns:1fr 300px;gap:16px;align-items:start;}
+  @media (max-width:880px){.layout{grid-template-columns:1fr;}}
+  .stage{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:12px;}
+  canvas{width:100%;height:auto;display:block;border-radius:3px;background:#0D1215;cursor:crosshair;}
+  .stage-controls{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap;}
+  button{
+    background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    padding:7px 12px;border-radius:3px;font-family:'IBM Plex Mono',monospace;
+    font-size:12px;cursor:pointer;transition:border-color .15s,color .15s;
+  }
+  button:hover{border-color:var(--cyan);color:var(--cyan);}
+  .hint{color:var(--muted);font-size:11.5px;margin-left:4px;}
+  .panel{display:flex;flex-direction:column;gap:14px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:14px;}
+  .stat-row{display:flex;gap:10px;}
+  .stat{flex:1;background:var(--panel-2);border:1px solid var(--line);border-radius:3px;padding:8px 10px;}
+  .stat-label{display:block;font-size:10px;color:var(--muted);letter-spacing:.4px;margin-bottom:4px;}
+  .stat-value{display:block;font-size:18px;font-weight:600;color:var(--text);}
+  .stat-value.ok{color:var(--mint);}
+  .stat-value.danger{color:var(--danger);}
+  .robot-row{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line);}
+  .robot-row:last-child{border-bottom:none;}
+  .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+  .robot-info{flex:1;min-width:0;}
+  .robot-name{font-size:12.5px;color:var(--text);}
+  .robot-task{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .robot-state{font-size:10px;padding:2px 6px;border-radius:2px;border:1px solid var(--line);color:var(--muted);white-space:nowrap;}
+  .robot-state.moving{color:var(--cyan);border-color:var(--cyan);}
+  .robot-state.wait{color:var(--amber);border-color:var(--amber);}
+  .battery{width:38px;height:4px;background:var(--line);border-radius:2px;overflow:hidden;margin-top:3px;}
+  .battery-fill{height:100%;background:var(--mint);}
+  .card h2{margin:0 0 10px;font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.4px;}
+  .bench-results{margin-top:10px;font-size:12px;}
+  .bench-results.hidden{display:none;}
+  .bar-row{margin-bottom:10px;}
+  .bar-label{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;}
+  .bar-track{background:var(--panel-2);border-radius:2px;height:10px;overflow:hidden;}
+  .bar-fill{height:100%;}
+  .bar-fill.dec{background:var(--cyan);}
+  .bar-fill.cen{background:var(--amber);}
+  .improvement{margin-top:10px;font-size:13px;color:var(--mint);font-weight:600;}
+  .legend{display:flex;flex-direction:column;gap:6px;font-size:11px;color:var(--muted);}
+  .legend-row{display:flex;align-items:center;gap:8px;}
+  .swatch{width:12px;height:12px;border-radius:2px;flex-shrink:0;}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand">
+      <span class="brand-mark">&#9670;</span>
+      <div class="brand-text">
+        <h1>Fleet Coordination Console</h1>
+        <p>decentralized AMR simulation — peer-to-peer conflict resolution</p>
+      </div>
+    </div>
+    <button id="modeBtn" class="mode-btn" data-mode="decentralized">mode: decentralized p2p (click to switch)</button>
+  </div>
+
+  <div class="layout">
+    <div class="stage">
+      <canvas id="grid" width="720" height="440"></canvas>
+      <div class="stage-controls">
+        <button id="startBtn">start</button>
+        <button id="pauseBtn">pause</button>
+        <button id="resetBtn">reset</button>
+        <span class="hint">click any open floor cell to drop a temporary blockage</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="card">
+        <div class="stat-row">
+          <div class="stat"><span class="stat-label">elapsed</span><span id="statTime" class="stat-value">0.0s</span></div>
+          <div class="stat"><span class="stat-label">tasks done</span><span id="statTasks" class="stat-value">0</span></div>
+          <div class="stat"><span class="stat-label">collisions</span><span id="statCollisions" class="stat-value ok">0</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>fleet status</h2>
+        <div id="robotList"></div>
+      </div>
+
+      <div class="card">
+        <h2>benchmark</h2>
+        <button id="benchBtn" style="width:100%;">run: decentralized vs centralized stop-and-wait</button>
+        <div id="benchResults" class="bench-results hidden"></div>
+      </div>
+
+      <div class="card">
+        <h2>legend</h2>
+        <div class="legend">
+          <div class="legend-row"><span class="swatch" style="background:#3A4149;"></span> rack / obstacle</div>
+          <div class="legend-row"><span class="swatch" style="background:transparent;border:1px dashed var(--amber);"></span> token-locked aisle</div>
+          <div class="legend-row"><span class="swatch" style="background:var(--danger);opacity:.5;"></span> active blockage</div>
+          <div class="legend-row"><span class="swatch" style="background:var(--cyan);"></span> R1</div>
+          <div class="legend-row"><span class="swatch" style="background:var(--amber);"></span> R2</div>
+          <div class="legend-row"><span class="swatch" style="background:var(--violet);"></span> R3</div>
+          <div class="legend-row"><span class="swatch" style="background:var(--mint);"></span> R4</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- constants & map ----------
+const COLS=18, ROWS=11, CELL=40;
+const TICK_MS=260;
+const CENTRAL_CORRIDOR_WAIT=4;
+const DECENTRAL_YIELD_PENALTY=1;
+const CENTRAL_YIELD_PENALTY=3;
+const BLOCKAGE_TTL_TICKS=30;
+const BENCH_MAX_TICKS=3000;
+const ROBOT_COLORS=['#00D4C8','#FFB020','#B18CFF','#4ADE80'];
+
+function key(x,y){return x+','+y;}
+function manhattan(a,b){return Math.abs(a[0]-b[0])+Math.abs(a[1]-b[1]);}
+
+const walls=new Set();
+function addRect(x0,y0,x1,y1){for(let x=x0;x<=x1;x++)for(let y=y0;y<=y1;y++)walls.add(key(x,y));}
+addRect(2,1,3,3);
+addRect(13,7,14,9);
+addRect(7,1,9,2);
+addRect(6,8,8,9);
+for(let x=0;x<COLS;x++){ if(x<8||x>9) walls.add(key(x,5)); }
+
+const CORRIDOR_CELLS=new Set([key(8,5),key(9,5)]);
+
+const STATIONS={
+  P1:[1,1], P2:[1,9], P3:[16,2],
+  D1:[16,8], D2:[9,9], D3:[4,9]
+};
+const TASK_LIST=[
+  ['P1','D1'],['P2','D2'],['P3','D3'],['P1','D2'],['P2','D1'],['P3','D2'],
+  ['P1','D3'],['P2','D3'],['P3','D1'],['P1','D1'],['P2','D2'],['P3','D3']
+];
+const START_POS=[[1,0],[16,0],[1,10],[16,10]];
+
+// ---------- pathfinding ----------
+function isBlockedFor(sim,x,y){
+  if(x<0||x>=COLS||y<0||y>=ROWS) return true;
+  const k=key(x,y);
+  if(walls.has(k)) return true;
+  if(sim.dynamicBlocks && sim.dynamicBlocks.has(k)) return true;
+  return false;
+}
+function neighbors(x,y){return [[x+1,y],[x-1,y],[x,y+1],[x,y-1]];}
+function bfsPath(sim,sx,sy,tx,ty){
+  if(sx===tx&&sy===ty) return [[sx,sy]];
+  const startK=key(sx,sy), goalK=key(tx,ty);
+  const queue=[[sx,sy]];
+  const cameFrom={};
+  const visited=new Set([startK]);
+  let found=false;
+  while(queue.length){
+    const [cx,cy]=queue.shift();
+    if(cx===tx&&cy===ty){found=true;break;}
+    for(const [nx,ny] of neighbors(cx,cy)){
+      const nk=key(nx,ny);
+      if(visited.has(nk)) continue;
+      if(isBlockedFor(sim,nx,ny)) continue;
+      visited.add(nk);
+      cameFrom[nk]=key(cx,cy);
+      queue.push([nx,ny]);
+    }
+  }
+  if(!found) return null;
+  const path=[[tx,ty]];
+  let curK=goalK;
+  while(curK!==startK){
+    const prevK=cameFrom[curK];
+    const [px,py]=prevK.split(',').map(Number);
+    path.unshift([px,py]);
+    curK=prevK;
+  }
+  return path;
+}
+
+// ---------- simulation ----------
+function createSim(mode){
+  const robots=START_POS.map((p,i)=>({
+    id:i, name:'R'+(i+1), color:ROBOT_COLORS[i],
+    x:p[0], y:p[1], prevX:p[0], prevY:p[1],
+    state:'IDLE', phase:null, task:null, path:null,
+    battery:100, blockedUntilTick:0, stateLabel:'idle'
+  }));
+  return {
+    mode, tick:0, tasksCompleted:0, collisions:0,
+    dynamicBlocks:new Map(), robots, taskCursor:0,
+    aisleOwner:null, corridorWaitTimers:{}, lastTickTime:performance.now(), running:false
+  };
+}
+
+function assignPending(sim){
+  while(sim.taskCursor<TASK_LIST.length){
+    const idle=sim.robots.filter(r=>r.state==='IDLE');
+    if(idle.length===0) break;
+    const t=TASK_LIST[sim.taskCursor];
+    const pickup=STATIONS[t[0]], dropoff=STATIONS[t[1]];
+    let best=idle[0], bestDist=manhattan([best.x,best.y],pickup);
+    for(const r of idle){ const d=manhattan([r.x,r.y],pickup); if(d<bestDist){best=r;bestDist=d;} }
+    const path=bfsPath(sim,best.x,best.y,pickup[0],pickup[1]);
+    if(!path){ sim.taskCursor++; continue; }
+    best.state='MOVING'; best.phase='toPickup';
+    best.task={pickupName:t[0],dropoffName:t[1],pickup,dropoff};
+    best.path=path; best.stateLabel='to pickup '+t[0];
+    sim.taskCursor++;
+  }
+}
+
+function onArrive(sim,r){
+  if(r.phase==='toPickup'){
+    r.phase='toDropoff';
+    const path=bfsPath(sim,r.x,r.y,r.task.dropoff[0],r.task.dropoff[1]);
+    r.path=path||[[r.x,r.y]];
+    r.stateLabel='to dropoff '+r.task.dropoffName;
+  } else if(r.phase==='toDropoff'){
+    sim.tasksCompleted++;
+    r.state='IDLE'; r.phase=null; r.task=null; r.path=null;
+    r.battery=Math.max(5,r.battery-3);
+    r.stateLabel='idle';
+  }
+}
+
+function stepSim(sim){
+  assignPending(sim);
+
+  for(const r of sim.robots){
+    if(r.state==='MOVING' && r.path && r.path.length===1){ onArrive(sim,r); }
+  }
+
+  const intents={};
+  for(const r of sim.robots){
+    r.nextCell=null;
+    if(r.state==='MOVING' && r.path && r.path.length>1 && sim.tick>=(r.blockedUntilTick||0)){
+      r.nextCell=r.path[1];
+      const k=key(r.nextCell[0],r.nextCell[1]);
+      (intents[k]=intents[k]||[]).push(r.id);
+    }
+  }
+  const winners={};
+  for(const k in intents){
+    const ids=intents[k];
+    winners[k]=Math.min(...ids);
+  }
+  const occ={};
+  for(const r of sim.robots){ occ[key(r.x,r.y)]=r.id; }
+
+  for(const r of sim.robots){
+    if(r.state!=='MOVING') continue;
+    if(sim.tick<(r.blockedUntilTick||0)){ r.stateLabel='waiting'; continue; }
+    if(!r.nextCell) continue;
+    const nk=key(r.nextCell[0],r.nextCell[1]);
+    const curK=key(r.x,r.y);
+    let canMove=true, reason=null;
+
+    if(CORRIDOR_CELLS.has(nk)){
+      if(sim.mode==='centralized'){
+        sim.corridorWaitTimers[r.id]=sim.corridorWaitTimers[r.id]||0;
+        if(sim.corridorWaitTimers[r.id]<CENTRAL_CORRIDOR_WAIT){
+          sim.corridorWaitTimers[r.id]++; canMove=false; reason='aisle wait (central)';
+        } else if(sim.aisleOwner!==null && sim.aisleOwner!==r.id){
+          canMove=false; reason='aisle busy';
+        } else {
+          sim.aisleOwner=r.id; sim.corridorWaitTimers[r.id]=0;
+        }
+      } else {
+        if(sim.aisleOwner!==null && sim.aisleOwner!==r.id){ canMove=false; reason='aisle-lock'; }
+        else { sim.aisleOwner=r.id; }
+      }
+    } else if(CORRIDOR_CELLS.has(curK) && sim.aisleOwner===r.id){
+      sim.aisleOwner=null;
+    }
+
+    if(canMove){
+      if(winners[nk]!==r.id){ canMove=false; reason='yield'; }
+      else if(occ[nk]!==undefined && occ[nk]!==r.id){
+        const occupant=sim.robots.find(x=>x.id===occ[nk]);
+        const occupantLeaving = occupant && occupant.state==='MOVING' && occupant.nextCell && sim.tick>=(occupant.blockedUntilTick||0);
+        if(!occupantLeaving){ canMove=false; reason='blocked'; }
+      }
+    }
+
+    if(canMove){
+      r.prevX=r.x; r.prevY=r.y;
+      r.x=r.nextCell[0]; r.y=r.nextCell[1];
+      r.path.shift();
+      r.blockedUntilTick=0;
+      if(!r.stateLabel || r.stateLabel==='waiting' || r.stateLabel==='yield'){
+        r.stateLabel = r.phase==='toPickup' ? 'to pickup '+r.task.pickupName : 'to dropoff '+r.task.dropoffName;
+      }
+    } else {
+      const penalty = sim.mode==='centralized' ? CENTRAL_YIELD_PENALTY : DECENTRAL_YIELD_PENALTY;
+      r.blockedUntilTick = sim.tick+penalty;
+      r.stateLabel = reason;
+    }
+  }
+
+  const posCount={};
+  for(const r of sim.robots){ const k=key(r.x,r.y); posCount[k]=(posCount[k]||0)+1; }
+  for(const k in posCount){ if(posCount[k]>1) sim.collisions++; }
+
+  for(const [k,expiry] of Array.from(sim.dynamicBlocks.entries())){
+    if(sim.tick>=expiry) sim.dynamicBlocks.delete(k);
+  }
+
+  sim.tick++;
+}
+
+function allDone(sim){
+  return sim.taskCursor>=TASK_LIST.length && sim.robots.every(r=>r.state==='IDLE');
+}
+
+function handleBlockageChange(sim,x,y){
+  for(const r of sim.robots){
+    if(r.state==='MOVING' && r.path && r.path.some(([px,py])=>px===x&&py===y)){
+      const target = r.phase==='toPickup' ? r.task.pickup : r.task.dropoff;
+      const np=bfsPath(sim,r.x,r.y,target[0],target[1]);
+      if(np) r.path=np;
+    }
+  }
+}
+
+// ---------- visual sim + rendering ----------
+let visualSim=createSim('decentralized');
+const canvas=document.getElementById('grid');
+const ctx=canvas.getContext('2d');
+
+function resetVisual(mode){
+  visualSim=createSim(mode||visualSim.mode);
+  visualSim.lastTickTime=performance.now();
+}
+
+function drawGrid(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.strokeStyle='#1A2027';
+  ctx.lineWidth=1;
+  for(let x=0;x<=COLS;x++){ ctx.beginPath(); ctx.moveTo(x*CELL,0); ctx.lineTo(x*CELL,ROWS*CELL); ctx.stroke(); }
+  for(let y=0;y<=ROWS;y++){ ctx.beginPath(); ctx.moveTo(0,y*CELL); ctx.lineTo(COLS*CELL,y*CELL); ctx.stroke(); }
+
+  ctx.fillStyle='#3A4149';
+  for(const k of walls){
+    const [x,y]=k.split(',').map(Number);
+    ctx.fillRect(x*CELL+1,y*CELL+1,CELL-2,CELL-2);
+  }
+
+  ctx.strokeStyle='#FFB020';
+  ctx.setLineDash([4,3]);
+  for(const k of CORRIDOR_CELLS){
+    const [x,y]=k.split(',').map(Number);
+    ctx.strokeRect(x*CELL+2,y*CELL+2,CELL-4,CELL-4);
+  }
+  ctx.setLineDash([]);
+
+  ctx.font='10px IBM Plex Mono';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  for(const name in STATIONS){
+    const [x,y]=STATIONS[name];
+    ctx.fillStyle = name[0]==='P' ? 'rgba(0,212,200,.18)' : 'rgba(177,140,255,.18)';
+    ctx.fillRect(x*CELL+4,y*CELL+4,CELL-8,CELL-8);
+    ctx.fillStyle = name[0]==='P' ? '#00D4C8' : '#B18CFF';
+    ctx.fillText(name,x*CELL+CELL/2,y*CELL+CELL/2);
+  }
+
+  ctx.fillStyle='rgba(255,92,92,.35)';
+  ctx.strokeStyle='#FF5C5C';
+  for(const [k] of visualSim.dynamicBlocks){
+    const [x,y]=k.split(',').map(Number);
+    ctx.fillRect(x*CELL+3,y*CELL+3,CELL-6,CELL-6);
+    ctx.strokeRect(x*CELL+3,y*CELL+3,CELL-6,CELL-6);
+  }
+}
+
+function drawRobots(t){
+  for(const r of visualSim.robots){
+    const rx=(r.prevX+(r.x-r.prevX)*t)*CELL+CELL/2;
+    const ry=(r.prevY+(r.y-r.prevY)*t)*CELL+CELL/2;
+    ctx.beginPath();
+    ctx.arc(rx,ry,12,0,Math.PI*2);
+    ctx.fillStyle=r.color;
+    ctx.fill();
+    if(r.stateLabel && (r.stateLabel.includes('yield')||r.stateLabel.includes('wait')||r.stateLabel.includes('lock')||r.stateLabel.includes('busy')||r.stateLabel.includes('blocked'))){
+      ctx.beginPath();
+      ctx.arc(rx,ry,16,0,Math.PI*2);
+      ctx.strokeStyle=r.color; ctx.lineWidth=1.5;
+      ctx.setLineDash([2,2]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.fillStyle='#0B0E11';
+    ctx.font='bold 10px IBM Plex Mono';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(r.id+1,rx,ry);
+  }
+}
+
+function renderLoop(now){
+  const t=Math.max(0,Math.min(1,(now-visualSim.lastTickTime)/TICK_MS));
+  drawGrid();
+  drawRobots(t);
+  requestAnimationFrame(renderLoop);
+}
+requestAnimationFrame(renderLoop);
+
+let tickHandle=null;
+function startTicking(){
+  if(tickHandle) return;
+  visualSim.running=true;
+  tickHandle=setInterval(()=>{
+    if(!visualSim.running) return;
+    stepSim(visualSim);
+    visualSim.lastTickTime=performance.now();
+    updateSidebar();
+    if(allDone(visualSim)){ visualSim.running=false; }
+  },TICK_MS);
+}
+function pauseTicking(){ visualSim.running=false; }
+
+function updateSidebar(){
+  document.getElementById('statTime').textContent=(visualSim.tick*TICK_MS/1000).toFixed(1)+'s';
+  document.getElementById('statTasks').textContent=visualSim.tasksCompleted;
+  const colEl=document.getElementById('statCollisions');
+  colEl.textContent=visualSim.collisions;
+  colEl.className='stat-value '+(visualSim.collisions>0?'danger':'ok');
+
+  const list=document.getElementById('robotList');
+  list.innerHTML=visualSim.robots.map(r=>{
+    const waiting = r.stateLabel && /yield|wait|lock|busy|blocked/.test(r.stateLabel);
+    return `<div class="robot-row">
+      <span class="dot" style="background:${r.color}"></span>
+      <div class="robot-info">
+        <div class="robot-name">${r.name}</div>
+        <div class="robot-task">${r.stateLabel||'idle'}</div>
+        <div class="battery"><div class="battery-fill" style="width:${r.battery}%"></div></div>
+      </div>
+      <span class="robot-state ${r.state==='MOVING'?(waiting?'wait':'moving'):''}">${r.state.toLowerCase()}</span>
+    </div>`;
+  }).join('');
+}
+updateSidebar();
+
+// ---------- canvas click -> inject blockage ----------
+canvas.addEventListener('click',(e)=>{
+  const rect=canvas.getBoundingClientRect();
+  const scaleX=canvas.width/rect.width, scaleY=canvas.height/rect.height;
+  const x=Math.floor((e.clientX-rect.left)*scaleX/CELL);
+  const y=Math.floor((e.clientY-rect.top)*scaleY/CELL);
+  if(x<0||x>=COLS||y<0||y>=ROWS) return;
+  const k=key(x,y);
+  if(walls.has(k)) return;
+  if(visualSim.dynamicBlocks.has(k)){ visualSim.dynamicBlocks.delete(k); }
+  else { visualSim.dynamicBlocks.set(k, visualSim.tick+BLOCKAGE_TTL_TICKS); }
+  handleBlockageChange(visualSim,x,y);
+});
+
+// ---------- controls ----------
+document.getElementById('startBtn').addEventListener('click',startTicking);
+document.getElementById('pauseBtn').addEventListener('click',pauseTicking);
+document.getElementById('resetBtn').addEventListener('click',()=>{
+  pauseTicking(); clearInterval(tickHandle); tickHandle=null;
+  resetVisual(); updateSidebar();
+});
+document.getElementById('modeBtn').addEventListener('click',(e)=>{
+  pauseTicking(); clearInterval(tickHandle); tickHandle=null;
+  const newMode = visualSim.mode==='decentralized' ? 'centralized' : 'decentralized';
+  resetVisual(newMode);
+  e.target.dataset.mode=newMode;
+  e.target.textContent = 'mode: '+(newMode==='decentralized'?'decentralized p2p':'centralized stop-and-wait')+' (click to switch)';
+  updateSidebar();
+});
+
+// ---------- benchmark ----------
+document.getElementById('benchBtn').addEventListener('click',()=>{
+  const decSim=createSim('decentralized');
+  const cenSim=createSim('centralized');
+  let ticks=0;
+  while(ticks<BENCH_MAX_TICKS && !(allDone(decSim)&&allDone(cenSim))){
+    if(!allDone(decSim)) stepSim(decSim);
+    if(!allDone(cenSim)) stepSim(cenSim);
+    ticks++;
+  }
+  const decTicks=decSim.tick, cenTicks=cenSim.tick;
+  const improvement = ((1-(decTicks/cenTicks))*100).toFixed(1);
+  const maxTicks=Math.max(decTicks,cenTicks);
+  const box=document.getElementById('benchResults');
+  box.classList.remove('hidden');
+  box.innerHTML=`
+    <div class="bar-row">
+      <div class="bar-label"><span>decentralized p2p</span><span>${(decTicks*TICK_MS/1000).toFixed(1)}s</span></div>
+      <div class="bar-track"><div class="bar-fill dec" style="width:${(decTicks/maxTicks*100)}%"></div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label"><span>centralized stop-and-wait</span><span>${(cenTicks*TICK_MS/1000).toFixed(1)}s</span></div>
+      <div class="bar-track"><div class="bar-fill cen" style="width:${(cenTicks/maxTicks*100)}%"></div></div>
+    </div>
+    <div class="improvement">${improvement}% faster · collisions: ${decSim.collisions} (decentralized) / ${cenSim.collisions} (centralized)</div>
+  `;
+});
+</script>
+</body>
+</html>
